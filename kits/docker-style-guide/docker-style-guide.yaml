@@ -1,0 +1,7 @@
+# syntax=docker/sandbox-kit:3
+schemaVersion: "3"
+kind: mixin
+displayName: Docker style guide
+version: "1.0.0"
+provides: ["docker-style-guide@1.0.0"]
+dockerfile: docker-style-guide.dockerfile

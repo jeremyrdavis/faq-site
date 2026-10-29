@@ -1,0 +1,98 @@
+name: review
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+concurrency:
+  group: review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    # Self-hosted runner: never run branches from forks on it.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [self-hosted, linux, kvm]
+    permissions: { contents: read }
+    env:
+      PR: ${{ github.event.pull_request.number }}
+      BASE: ${{ github.event.pull_request.base.sha }}
+      SBX_NAME: review-${{ github.run_id }}
+      KIT_NS: ${{ vars.KIT_NAMESPACE }}
+      KIT_VERSION: ${{ vars.KIT_VERSION }}
+    outputs:
+      verdict: ${{ steps.verdict.outputs.verdict }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: "${{ github.event.pull_request.head.sha }}", fetch-depth: 0 }
+      - name: Sign in to Docker as the reviewer identity
+        env: { REVIEWER_DOCKER_PAT: "${{ secrets.REVIEWER_DOCKER_PAT }}" }
+        run: echo "$REVIEWER_DOCKER_PAT" | sbx login --username "${{ vars.REVIEWER_DOCKER_ID }}" --password-stdin
+      - run: sbx policy init deny-all
+      - name: Agent credentials
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GITHUB_READ_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          sbx secret set anthropic -t "$ANTHROPIC_API_KEY" --force
+          sbx secret set github --sandbox "$SBX_NAME" -t "$GITHUB_READ_TOKEN" --force
+      - name: Create reviewer sandbox (private clone; runner checkout read-only to the agent)
+        run: sbx create --name "$SBX_NAME" --skills=off --clone "docker.io/$KIT_NS/moby-reviewer:$KIT_VERSION" --kit "docker.io/$KIT_NS/docker-style-guide:$KIT_VERSION" .
+      - name: Prove the blast radius before the agent runs
+        run: |
+          sbx policy ls "$SBX_NAME" --wide
+          sbx policy check network --sandbox "$SBX_NAME" api.anthropic.com
+          for host in fonts.googleapis.com registry.npmjs.org; do
+            if sbx policy check network --sandbox "$SBX_NAME" "$host"; then
+              echo "::error::$host is reachable from the reviewer sandbox"; exit 1
+            fi
+          done
+      - name: Run the review
+        run: |
+          mkdir -p out
+          sbx exec "$SBX_NAME" mkdir -p /home/agent/reviews
+          PROMPT=$(sed "s/{{PR}}/$PR/g; s/{{BASE}}/$BASE/g" kits/moby-reviewer/review-prompt.md)
+          sbx exec "$SBX_NAME" claude --dangerously-skip-permissions -p "$PROMPT" | tee out/agent.log
+      - name: Collect outputs
+        if: always()
+        run: |
+          mkdir -p out
+          for f in review.md verdict.json desktop.png mobile.png computed.json; do
+            sbx cp "$SBX_NAME:/home/agent/reviews/$f" "out/$f" || true
+          done
+          sbx policy log "$SBX_NAME" --json > out/policy-log.json || true
+      - id: verdict
+        if: always()
+        run: echo "verdict=$(jq -r '.verdict // "request_changes"' out/verdict.json 2>/dev/null || echo request_changes)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: "review-${{ github.run_id }}", path: out/, if-no-files-found: warn }
+      - if: always()
+        run: |
+          sbx rm --force "$SBX_NAME" || true
+          sbx secret rm github --sandbox "$SBX_NAME" || true
+
+  publish:
+    needs: review
+    # Runs even if the review job failed, so gate.sh can fail closed with a comment.
+    if: ${{ !cancelled() && needs.review.result != 'skipped' }}
+    runs-on: ubuntu-latest
+    permissions: { pull-requests: write }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with: { name: "review-${{ github.run_id }}", path: out/ }
+      - run: bash .github/scripts/gate.sh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          REVIEWER_DOCKER_ID: ${{ vars.REVIEWER_DOCKER_ID }}
+          SBX_NAME: review-${{ github.run_id }}
+
+  build:
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "Review passed — publishing site."

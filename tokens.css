@@ -1,0 +1,174 @@
+/* ==========================================================================
+   Docker style guide tokens  v1.0.0
+   Custom properties only. Derived from the Docker Demo Design System
+   (docker-ds.css v1.1.0, sections 1-3), with names unchanged.
+   Additions: --measure. Removed: color-scheme (set it in styles.css), so
+   linking this file alone does not restyle the page.
+   No web fonts are loaded; --font-sans falls through to system fonts.
+   ========================================================================== */
+/* 1. Brand primitives ---------------------------------------------------- */
+:root {
+  /* Official brand colors — the only colors the Docker logo may appear in */
+  --docker-ocean-blue: #2560FF;
+  --docker-light-blue: #D9E5FC;
+  --docker-deep-blue:  #00153C;
+  --docker-white:      #FFFFFF;
+
+  /* UI ramp derived from Ocean Blue (for UI states only, never the logo) */
+  --blue-50:  #F0F5FF;
+  --blue-100: #D9E5FC;   /* = Light Blue */
+  --blue-200: #B5CBFF;
+  --blue-300: #7FA3FF;
+  --blue-400: #5480FF;
+  --blue-500: #2560FF;   /* = Ocean Blue */
+  --blue-600: #1A4AD9;
+  --blue-700: #1238A8;
+  --blue-800: #0A2670;
+  --blue-900: #00153C;   /* = Deep Blue */
+
+  /* Cool neutrals (aligned with docker.com UI greys) */
+  --gray-0:   #FFFFFF;
+  --gray-50:  #F9FAFB;
+  --gray-100: #F2F4F7;
+  --gray-200: #E1E5EB;
+  --gray-300: #C9D0D9;
+  --gray-400: #9AA4B2;
+  --gray-500: #636D7C;
+  --gray-600: #4B5563;
+  --gray-700: #2C333F;
+  --gray-800: #1C222C;
+  --gray-900: #0F121B;
+
+  /* Functional status colors (callouts, badges) */
+  --green-600: #13795B;  --green-50: #E7F6F0;
+  --amber-600: #9A5B00;  --amber-50: #FFF4DE;
+  --red-600:   #C4302B;  --red-50:   #FDECEB;
+
+  /* Type — Docker uses Repro (display, licensed), Inter (text) and
+     IBM Plex Mono (code). Repro is listed first so it is used where it is
+     installed; Inter is NOT loaded here; system fonts are the fallback. */
+  --font-display: "Repro", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-sans:    "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --font-mono:    "IBM Plex Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+  /* Type scale */
+  --fs-xs:   .8rem;
+  --fs-sm:   .875rem;
+  --fs-base: 1rem;
+  --fs-md:   1.125rem;
+  --fs-lg:   1.4rem;
+  --fs-xl:   1.75rem;
+  --fs-2xl:  2.25rem;
+  --fs-hero: clamp(2.1rem, 4vw + .6rem, 3.5rem);
+
+  /* Spacing (4px base) */
+  --space-1: .25rem; --space-2: .5rem;  --space-3: .75rem; --space-4: 1rem;
+  --space-5: 1.5rem; --space-6: 2rem;   --space-7: 3rem;   --space-8: 4rem;
+
+  /* Shape + motion */
+  --radius-sm: 4px;
+  --radius:    8px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+  --maxw:       1120px;
+  --maxw-prose: 740px;
+  --t-fast:   150ms ease;
+  --t-normal: 250ms ease;
+}
+
+/* 2. Semantic tokens (light) --------------------------------------------- */
+:root {
+  --bg:          var(--gray-50);
+  --bg-soft:     #EEF3FD;
+  --bg-card:     var(--gray-0);
+  --bg-reading:  var(--gray-0);          /* tutorial pages */
+  --fg:          var(--docker-deep-blue); /* headings, strong text */
+  --fg-body:     var(--gray-700);
+  --fg-muted:    var(--gray-600);
+  --fg-faint:    var(--gray-500);
+  --accent:        var(--docker-ocean-blue); /* links, rules, numbers */
+  --accent-strong: var(--blue-600);          /* accent text on soft bg, hovers */
+  --accent-bg:     var(--docker-ocean-blue); /* button fills */
+  --accent-bg-hover: var(--blue-600);
+  --accent-soft:   var(--docker-light-blue);
+  --accent-on-soft: var(--blue-600);
+  --accent-fg:     var(--docker-white);
+  --rule:        var(--gray-200);
+  --rule-strong: var(--gray-300);
+  --focus:       var(--docker-ocean-blue);
+  --code-bg:     var(--docker-deep-blue);
+  --code-fg:     #E6EDFF;
+  --code-inline-bg: #EEF3FD;
+  --code-inline-fg: var(--blue-700);
+  --logo-fill:   var(--docker-ocean-blue);
+  --hero-glow:   var(--docker-light-blue);
+  --shadow-sm: 0 1px 2px rgba(0, 21, 60, .05), 0 1px 3px rgba(0, 21, 60, .07);
+  --shadow-md: 0 4px 10px rgba(0, 21, 60, .07), 0 2px 4px rgba(0, 21, 60, .05);
+  --shadow-lg: 0 12px 32px rgba(0, 21, 60, .12), 0 6px 14px rgba(0, 21, 60, .08);
+}
+
+/* 3. Dark theme — follows the OS unless data-theme="light" is set,
+      and can be forced with data-theme="dark" on <html>. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:          var(--docker-deep-blue);
+    --bg-soft:     #0A214D;
+    --bg-card:     #0C2756;
+    --bg-reading:  #001A47;
+    --fg:          var(--docker-white);
+    --fg-body:     #E3EBFD;
+    --fg-muted:    #B4C4E6;
+    --fg-faint:    #8FA3CC;
+    --accent:        var(--blue-300);
+    --accent-strong: var(--blue-200);
+    --accent-bg:     var(--docker-ocean-blue);
+    --accent-bg-hover: var(--blue-400);
+    --accent-soft:   #163A7E;
+    --accent-on-soft: var(--docker-light-blue);
+    --rule:        #1D3A72;
+    --rule-strong: #2B4C8C;
+    --focus:       var(--blue-300);
+    --code-bg:     #000B22;
+    --code-fg:     #E6EDFF;
+    --code-inline-bg: #13306A;
+    --code-inline-fg: var(--docker-light-blue);
+    --logo-fill:   var(--docker-white);
+    --hero-glow:   #133A8A;
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, .35);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, .4);
+    --shadow-lg: 0 14px 36px rgba(0, 0, 0, .5);
+  }
+}
+:root[data-theme="dark"] {
+  --bg:          var(--docker-deep-blue);
+  --bg-soft:     #0A214D;
+  --bg-card:     #0C2756;
+  --bg-reading:  #001A47;
+  --fg:          var(--docker-white);
+  --fg-body:     #E3EBFD;
+  --fg-muted:    #B4C4E6;
+  --fg-faint:    #8FA3CC;
+  --accent:        var(--blue-300);
+  --accent-strong: var(--blue-200);
+  --accent-bg:     var(--docker-ocean-blue);
+  --accent-bg-hover: var(--blue-400);
+  --accent-soft:   #163A7E;
+  --accent-on-soft: var(--docker-light-blue);
+  --rule:        #1D3A72;
+  --rule-strong: #2B4C8C;
+  --focus:       var(--blue-300);
+  --code-bg:     #000B22;
+  --code-fg:     #E6EDFF;
+  --code-inline-bg: #13306A;
+  --code-inline-fg: var(--docker-light-blue);
+  --logo-fill:   var(--docker-white);
+  --hero-glow:   #133A8A;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .35);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, .4);
+  --shadow-lg: 0 14px 36px rgba(0, 0, 0, .5);
+}
+
+/* Additions for the guide ------------------------------------------------ */
+:root {
+  --measure: 740px; /* = --maxw-prose; content column width (rule 4) */
+}
