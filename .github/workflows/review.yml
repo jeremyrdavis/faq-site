@@ -26,7 +26,15 @@ jobs:
       - name: Sign in to Docker as the reviewer identity
         env: { REVIEWER_DOCKER_PAT: "${{ secrets.REVIEWER_DOCKER_PAT }}" }
         run: echo "$REVIEWER_DOCKER_PAT" | sbx login --username "${{ vars.REVIEWER_DOCKER_ID }}" --password-stdin
-      - run: sbx policy init deny-all
+      - name: Deny-by-default network policy
+        # init errors once the global policy exists, and the runner is persistent. Skip it when the
+        # policy is already deny-all or org-governed; any other existing policy makes init fail the job.
+        run: |
+          policy=$(sbx policy ls)
+          echo "$policy"
+          if grep -q 'Managed by' <<<"$policy"; then echo "org-governed: local init skipped"
+          elif grep -q 'default-deny-all' <<<"$policy"; then echo "already deny-all"
+          else sbx policy init deny-all; fi
       - name: Agent credentials
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
