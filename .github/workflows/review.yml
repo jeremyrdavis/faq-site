@@ -48,7 +48,7 @@ jobs:
       - name: Run the review
         run: |
           mkdir -p out
-          sbx exec "$SBX_NAME" mkdir -p /home/agent/reviews
+          sbx exec "$SBX_NAME" mkdir -p /tmp/reviews
           PROMPT=$(sed "s/{{PR}}/$PR/g; s/{{BASE}}/$BASE/g" kits/moby-reviewer/review-prompt.md)
           sbx exec "$SBX_NAME" claude --dangerously-skip-permissions -p "$PROMPT" | tee out/agent.log
       - name: Collect outputs
@@ -56,7 +56,7 @@ jobs:
         run: |
           mkdir -p out
           for f in review.md verdict.json desktop.png mobile.png computed.json; do
-            sbx cp "$SBX_NAME:/home/agent/reviews/$f" "out/$f" || true
+            sbx cp "$SBX_NAME:/tmp/reviews/$f" "out/$f" || true
           done
           sbx policy log "$SBX_NAME" --json > out/policy-log.json || true
       - id: verdict

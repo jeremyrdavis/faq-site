@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # Render ./index.html (file://, no network) at 360x800 and 1280x900.
-# Writes mobile.png, desktop.png and computed.json to /home/agent/reviews.
+# Writes mobile.png, desktop.png and computed.json to /tmp/reviews.
 # Usage: render.sh [dir-with-index.html]   (default: $PWD)
 set -euo pipefail
 
 if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
-  echo "usage: render.sh [dir]  - screenshots + computed.json of dir/index.html into /home/agent/reviews"
+  echo "usage: render.sh [dir]  - screenshots + computed.json of dir/index.html into /tmp/reviews"
   exit 0
 fi
 
 export RENDER_DIR="${1:-$PWD}"
-export REVIEWS_DIR="${REVIEWS_DIR:-/home/agent/reviews}"
+export REVIEWS_DIR="${REVIEWS_DIR:-/tmp/reviews}"
 [ -f "$RENDER_DIR/index.html" ] || { echo "render.sh: $RENDER_DIR/index.html not found" >&2; exit 2; }
 mkdir -p "$REVIEWS_DIR"
 
