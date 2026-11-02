@@ -60,13 +60,15 @@ const probe = (sel) => {
 };
 
 (async () => {
-  const browser = await chromium.launch();
+  // Small /dev/shm and no GPU in nested VMs can stall Chromium; every step has a timeout.
+  const browser = await chromium.launch({ timeout: 60000, args: ['--disable-dev-shm-usage', '--disable-gpu'] });
   const result = { url, layout: {}, styles: {}, focus: {}, contrast: {} };
   for (const [name, w, h] of [['mobile', 360, 800], ['desktop', 1280, 900]]) {
     const ctx = await browser.newContext({ viewport: { width: w, height: h }, colorScheme: 'light', reducedMotion: 'reduce' });
     // file:// only: no network from the renderer either.
     await ctx.route('**/*', (r) => r.request().url().startsWith('file:') ? r.continue() : r.abort());
     const page = await ctx.newPage();
+    page.setDefaultTimeout(30000);
     await page.goto(url);
     await page.screenshot({ path: `${out}/${name}.png`, fullPage: true });
     result.layout[name] = await page.evaluate(() => {
@@ -103,5 +105,8 @@ const probe = (sel) => {
 })().catch((e) => { console.error(e); process.exit(1); });
 JS
 
-node -e "$SCRIPT"
+# Hard ceiling so a stuck browser fails instead of hanging. Rendering takes minutes on the nested-VM
+# runner, which is why review.yml runs this as its own step rather than leaving it to the agent.
+timeout --kill-after=10 "${RENDER_TIMEOUT:-600}" node -e "$SCRIPT" || {
+  rc=$?; echo "render.sh: render failed or timed out (exit $rc)" >&2; exit "$rc"; }
 echo "render.sh: wrote $REVIEWS_DIR/{mobile.png,desktop.png,computed.json}"

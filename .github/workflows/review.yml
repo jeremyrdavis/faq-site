@@ -12,7 +12,7 @@ jobs:
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, linux, kvm]
     permissions: { contents: read }
-    timeout-minutes: 20   # a hung agent fails the job; publish then fails closed
+    timeout-minutes: 30   # a hung agent fails the job; publish then fails closed
     env:
       PR: ${{ github.event.pull_request.number }}
       BASE: ${{ github.event.pull_request.base.sha }}
@@ -54,10 +54,14 @@ jobs:
               echo "::error::$host is reachable from the reviewer sandbox"; exit 1
             fi
           done
+      - name: Render the site (Chromium, file:// only)
+        # Its own step so the render time shows in the log and the agent never waits on a browser.
+        run: |
+          sbx exec "$SBX_NAME" mkdir -p /tmp/reviews
+          time sbx exec "$SBX_NAME" render.sh "$GITHUB_WORKSPACE"
       - name: Run the review
         run: |
           mkdir -p out
-          sbx exec "$SBX_NAME" mkdir -p /tmp/reviews
           PROMPT=$(sed "s/{{PR}}/$PR/g; s/{{BASE}}/$BASE/g" kits/moby-reviewer/review-prompt.md)
           sbx exec "$SBX_NAME" claude --dangerously-skip-permissions -p "$PROMPT" | tee out/agent.log
       - name: Collect outputs
