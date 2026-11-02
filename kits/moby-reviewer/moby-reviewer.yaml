@@ -2,7 +2,7 @@
 schemaVersion: "3"
 kind: workload
 displayName: Reviewer (read-only)
-version: "1.0.0"
+version: "1.0.1"
 dockerfile: moby-reviewer.dockerfile
 capabilities:
   - type: com.docker.sandbox/sbx@1

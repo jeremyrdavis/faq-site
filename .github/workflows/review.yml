@@ -12,6 +12,7 @@ jobs:
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, linux, kvm]
     permissions: { contents: read }
+    timeout-minutes: 20   # a hung agent fails the job; publish then fails closed
     env:
       PR: ${{ github.event.pull_request.number }}
       BASE: ${{ github.event.pull_request.base.sha }}
