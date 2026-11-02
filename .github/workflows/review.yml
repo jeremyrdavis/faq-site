@@ -40,7 +40,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GITHUB_READ_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          sbx secret set anthropic -t "$ANTHROPIC_API_KEY" --force
+          sbx secret set anthropic --sandbox "$SBX_NAME" -t "$ANTHROPIC_API_KEY" --force
           sbx secret set github --sandbox "$SBX_NAME" -t "$GITHUB_READ_TOKEN" --force
       - name: Create reviewer sandbox (private clone; runner checkout read-only to the agent)
         run: sbx create --name "$SBX_NAME" --skills=off --clone "docker.io/$KIT_NS/moby-reviewer:$KIT_VERSION" --kit "docker.io/$KIT_NS/docker-style-guide:$KIT_VERSION" .
@@ -77,6 +77,7 @@ jobs:
         run: |
           sbx rm --force "$SBX_NAME" || true
           sbx secret rm github --sandbox "$SBX_NAME" || true
+          sbx secret rm anthropic --sandbox "$SBX_NAME" || true
 
   publish:
     needs: review
