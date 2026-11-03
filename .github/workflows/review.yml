@@ -44,7 +44,7 @@ jobs:
           sbx secret set anthropic --sandbox "$SBX_NAME" -t "$ANTHROPIC_API_KEY" --force
           sbx secret set github --sandbox "$SBX_NAME" -t "$GITHUB_READ_TOKEN" --force
       - name: Create reviewer sandbox (private clone; runner checkout read-only to the agent)
-        run: sbx create --name "$SBX_NAME" --skills=off --clone "docker.io/$KIT_NS/moby-reviewer:$KIT_VERSION" --kit "docker.io/$KIT_NS/docker-style-guide:$KIT_VERSION" .
+        run: sbx create --name "$SBX_NAME" --skills=off --clone "docker.io/$KIT_NS/mobyreviewer:$KIT_VERSION" --kit "docker.io/$KIT_NS/docker-style-guide:$KIT_VERSION" .
       - name: Prove the blast radius before the agent runs
         run: |
           sbx policy ls "$SBX_NAME" --wide
@@ -62,7 +62,7 @@ jobs:
       - name: Run the review
         run: |
           mkdir -p out
-          PROMPT=$(sed "s/{{PR}}/$PR/g; s/{{BASE}}/$BASE/g" kits/moby-reviewer/review-prompt.md)
+          PROMPT=$(sed "s/{{PR}}/$PR/g; s/{{BASE}}/$BASE/g" kits/mobyreviewer/review-prompt.md)
           sbx exec "$SBX_NAME" claude --dangerously-skip-permissions -p "$PROMPT" | tee out/agent.log
       - name: Collect outputs
         if: always()
