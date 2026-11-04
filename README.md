@@ -29,6 +29,120 @@ All three compose the same `docker-style-guide` kit. It ships [`STYLE_GUIDE.md`]
 6. **People stay in the loop, and there are no agent loops.** Only a person applying a label starts the fixer; issue text can't. The fixer's PR goes through the same review as everyone else's, and a person approves and merges it. Reviews never start the fixer.
 7. **Issue text is data, not instructions.** The issue is handed to the fixer as a file, and its instructions say to treat it as a change request. A prompt-injection attempt in an issue only produces a text change.
 
+## How it works
+
+### Who acts for whom
+
+Each agent runs in its own sandbox. The sandbox decides the Docker identity it's recorded under, the GitHub credential the proxy injects for it, and the hosts it can reach. The agent never sees a raw token.
+
+```mermaid
+flowchart LR
+  P(["Presenter"])
+  subgraph MAC["Presenter's Mac"]
+    DEV["moby-developer<br/>Docker: presenter<br/>GitHub: presenter's token<br/>direct mode"]
+  end
+  subgraph VM["Self-hosted runner (Lima VM)"]
+    REV["mobyreviewer<br/>Docker: mobyreviewer<br/>GitHub: read-only<br/>private clone"]
+    FIX["moby-fixer<br/>Docker: presenter (delegated)<br/>GitHub: App token, 1 repo, ~1 h<br/>runner checkout"]
+  end
+  GUIDE[["docker-style-guide<br/>STYLE_GUIDE.md, tokens.css, skill"]]
+  GH[("GitHub repo")]
+  NET{{"Allowed: GitHub, Anthropic<br/>Denied: npm, PyPI, font CDNs"}}
+
+  P -- "prompt" --> DEV
+  P -- "label agent-fix" --> GH
+  DEV -- "push branch, open PR" --> GH
+  GH -- "pull request" --> REV
+  GH -- "labeled issue" --> FIX
+  FIX -- "push branch, open PR" --> GH
+  GUIDE -.-> DEV
+  GUIDE -.-> REV
+  GUIDE -.-> FIX
+  REV -.- NET
+  FIX -.- NET
+```
+
+### Phase A: style the site, review the PR
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor P as Presenter
+  participant D as moby-developer<br/>(Mac sandbox)
+  participant GH as GitHub
+  participant R as review job<br/>(self-hosted runner)
+  participant S as mobyreviewer<br/>(sandbox, private clone)
+  participant PUB as publish job<br/>(GitHub-hosted)
+
+  P->>D: Style the site per the style guide
+  D->>D: Edit styles.css with the guide's tokens
+  D->>GH: Push style/ branch, open PR
+  GH->>R: pull_request runs review.yml
+  R->>R: sbx login as mobyreviewer
+  R->>S: Create sandbox with read-only token
+  R->>S: policy check: Anthropic allowed, fonts and npm denied
+  R->>S: Render at 360 px and 1280 px
+  R->>S: claude -p, review against rules 1 to 8
+  S-->>R: review.md, verdict.json, screenshots
+  R->>R: Upload artifact, remove sandbox and secrets
+  R-->>PUB: verdict.json
+  alt verdict is pass
+    PUB->>GH: Comment: review passed
+  else request_changes, missing or malformed
+    PUB->>GH: Request changes, publish check fails
+  end
+  P->>GH: Merge once publish is green (as admin: an author can't approve their own PR)
+```
+
+### Phase B: a person labels an issue, the fixer opens a PR
+
+```mermaid
+sequenceDiagram
+  autonumber
+  actor P as Presenter
+  participant GH as GitHub
+  participant F as fix job<br/>(self-hosted runner)
+  participant S as moby-fixer<br/>(sandbox, direct mode)
+  participant R as review.yml<br/>(Phase A pipeline)
+
+  P->>GH: Open an issue (text change to an FAQ answer)
+  P->>GH: Apply the agent-fix label
+  GH->>F: issues labeled runs fix.yml
+  F->>GH: Request an App token, this repo only, about 1 hour
+  F->>F: sbx login as the presenter (delegation)
+  F->>S: Create sandbox with App token and API key, scoped to it
+  F->>S: policy check: Anthropic and GitHub allowed, fonts and npm denied
+  F->>S: Copy the issue in as a data file
+  F->>S: claude -p, fix the issue
+  S->>S: Edit index.html text, run html-validate
+  S->>GH: Push content/ branch as the bot, open PR "Fixes" the issue
+  S->>GH: Comment the PR link on the issue
+  F->>GH: Check that the PR exists
+  F->>F: Upload artifact, remove sandbox and secrets
+  GH->>R: The bot's PR runs the same review
+  R->>GH: Review posted, footer names mobyreviewer
+  P->>GH: Approve and merge
+  GH->>GH: Issue closes
+```
+
+### What AI Governance records
+
+Every sandbox run is recorded against the Docker account it signed in as. The fixer signs in as the presenter, so the presenter is the principal for two agents. The reviewer signs in as its own account, `mobyreviewer`, so it never acts for the presenter. On GitHub, the fixer's commits and PR show as the App's bot, not as the presenter.
+
+```mermaid
+flowchart TB
+  subgraph AUD["Docker AI Governance"]
+    PR1(["Principal: presenter"])
+    A1["Agent: moby-developer<br/>styled the site"]
+    A2["Agent: moby-fixer<br/>fixed an issue"]
+    PR1 --> A1
+    PR1 --> A2
+  end
+  subgraph SEP["A separate account"]
+    REVN["mobyreviewer<br/>reviews every PR,<br/>never acts for the presenter"]
+  end
+```
+
 ## What's in the repo
 
 | Path | What it is |
