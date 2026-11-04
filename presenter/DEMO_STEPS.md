@@ -11,7 +11,7 @@ This folder (`presenter/`) is presenter tooling. It's copied into each demo repo
 | Setup / teardown | `presenter/setup-demo-repo.sh`, `presenter/teardown-demo-repo.sh` in a local clone of the seed (called `$S/…` below) |
 | Developer (Sandbox #1) | your Mac, your Docker login, `moby-developer` + `docker-style-guide` mixin, direct mode |
 | Reviewer (CI) | GitHub Actions on the self-hosted runner `lima-runner` in Lima VM `runner`, Docker identity `mobyreviewer`, `--clone` |
-| Fixer (CI, Phase B) | the same runner. Docker principal: **you** (`jeremydavis86783`). Agent: `moby-fixer`. GitHub writes go through the App `docker-content-fixer[bot]`. Direct mode. |
+| Fixer (CI, Phase B) | the same runner. Docker principal: **you** (`jeremydavis86783`). Agent: `moby-fixer`. GitHub writes go through the App `moby-content-fixer[bot]`. Direct mode. |
 | Images | `docker.io/jeremydavis86783/{mobyreviewer,moby-fixer,docker-style-guide}:1.0.2` |
 
 ## Once per machine
@@ -20,7 +20,7 @@ This folder (`presenter/`) is presenter tooling. It's copied into each demo repo
 
 - `sbx` ≥ 0.45, `gh`, `git` and `limactl` on the Mac.
 - The Lima VM `runner` (Ubuntu 24.04 arm64, nested virtualization, your user in the `kvm` group).
-  - `sbx` is installed.
+  - `sbx` and `gh` are installed (`sudo apt-get install -y gh`). `fix.yml` runs `gh` on the runner with the App token, so it doesn't need to be signed in. Without it, `fix` fails at "Bot identity for commits" with `gh: command not found`.
   - The GitHub Actions runner is unpacked at `~/actions-runner`. It doesn't need to be registered: setup does that.
   - Each CI job signs in to `sbx` as its own identity.
 - The images above are published. To publish the fixer:
@@ -37,7 +37,7 @@ This folder (`presenter/`) is presenter tooling. It's copied into each demo repo
 gh auth refresh -s workflow,delete_repo        # push .github/workflows; delete demo repos
 ```
 
-### The GitHub App `docker-content-fixer` (Phase B)
+### The GitHub App `moby-content-fixer` (Phase B)
 
 The fixer writes to GitHub as this App, never with your token. Its token is limited to one repo and expires in about an hour. A PR it opens triggers `review.yml`, and you can approve it, because you're not its author.
 
@@ -47,7 +47,7 @@ The fixer writes to GitHub as this App, never with your token. Its token is limi
 
 | Field | Value |
 |---|---|
-| GitHub App name | `docker-content-fixer` (if it's taken, choose another; commits and PRs show `<name>[bot]`, and `fix.yml` reads the name from the token) |
+| GitHub App name | `moby-content-fixer` (if it's taken, choose another; commits and PRs show `<name>[bot]`, and `fix.yml` reads the name from the token) |
 | Homepage URL | anything, for example `https://github.com/jeremyrdavis/faq-site` |
 | Callback URL | empty |
 | Request user authorization (OAuth) during installation | unchecked |
@@ -67,8 +67,8 @@ The fixer writes to GitHub as this App, never with your token. Its token is limi
 **5. The App ID and private key.** Note the **App ID**. Then go to **Private keys** → **Generate a private key**, and store the `.pem` outside any repo:
 
 ```bash
-mkdir -p ~/.config/demo && mv ~/Downloads/docker-content-fixer.*.private-key.pem ~/.config/demo/docker-content-fixer.pem
-chmod 600 ~/.config/demo/docker-content-fixer.pem
+mkdir -p ~/.config/demo && mv ~/Downloads/moby-content-fixer.*.private-key.pem ~/.config/demo/moby-content-fixer.pem
+chmod 600 ~/.config/demo/moby-content-fixer.pem
 ```
 
 **6. Install it.**
@@ -91,7 +91,7 @@ export S=~/Workspace/mobyreviwer/demo-03/faq-site/presenter   # presenter/ in yo
 
 # Phase B. Leave FIXER_APP_ID unset to set up Phase A only.
 export FIXER_APP_ID=...                        # step 5 above
-export FIXER_APP_PRIVATE_KEY_FILE=~/.config/demo/docker-content-fixer.pem
+export FIXER_APP_PRIVATE_KEY_FILE=~/.config/demo/moby-content-fixer.pem
 export FIXER_INSTALLATION_ID=...               # step 7 above
 export FIXER_DOCKER_PAT=...                    # Read-only PAT for YOUR Docker account (the fixer acts as you)
 ```
@@ -139,7 +139,7 @@ ID=$(gh api repos/$NEW/actions/runners -q '.runners[] | select(.name=="lima-runn
 gh api -X POST repos/$NEW/actions/runners/$ID/labels -f 'labels[]=kvm'
 ```
 
-**If setup warns `could not add … to the App installation`,** add the repo by hand before Beat 6, or `fix` fails at its first step: Settings → Applications → `docker-content-fixer` → **Configure** → **Repository access** → add `$REPO` → **Save**.
+**Add the repo to the App by hand right after setup,** unless setup added it without a warning. Setup's call didn't take on the first real run. If you skip this, `fix` fails at its first step with `Not Found … get-a-repository-installation-for-the-authenticated-app`: Settings → Applications → `moby-content-fixer` → **Configure** → **Repository access** → add `$REPO` → **Save**.
 
 ### 2. Stage
 
@@ -256,11 +256,11 @@ Point out, in the `fix` job:
 **Beat 7 (9:00–11:00): the bot's PR, reviewed by the second agent.**
 
 ```bash
-gh pr list -R $NEW                             # author: app/docker-content-fixer
+gh pr list -R $NEW                             # author: app/moby-content-fixer
 gh issue view $I -R $NEW --comments            # the fixer's comment linking the PR
 ```
 
-- **The PR:** authored by `docker-content-fixer[bot]`, body `Fixes #<issue>`, changing only `index.html` text. Commits are by `docker-content-fixer[bot]`.
+- **The PR:** authored by `moby-content-fixer[bot]`, body `Fixes #<issue>`, changing only `index.html` text. Commits are by `moby-content-fixer[bot]`.
 - **`review` fires on the bot's PR.** A token from the App can trigger workflows, where `GITHUB_TOKEN` couldn't. Watch it with `gh run watch -R $NEW`.
 - **The Docker AI Governance UI:** the same Principal, `jeremydavis86783`, with Agent `moby-developer` for the styling run and Agent `moby-fixer` for this one.
 
@@ -316,7 +316,7 @@ Run these on a rehearsal repo, not on stage:
 | `fix` fails at "Sign in to Docker" | `FIXER_DOCKER_PAT` wrong or expired | Create a new Read-only PAT for `jeremydavis86783`, then `gh secret set FIXER_DOCKER_PAT -R $NEW`. |
 | Labeling does nothing | label isn't exactly `agent-fix`, or Phase B wasn't set up | `gh label list -R $NEW`; re-run setup with `FIXER_APP_ID` set on a new repo. |
 | `fix` fails at "Verify a PR exists" | the agent stopped short or couldn't push | Read `fixer.log` in the `fix-<run id>` artifact; `policy-log.json` shows blocked hosts. |
-| No `review` on the bot's PR | the PR wasn't made with the App token | Check the PR author is `app/docker-content-fixer`. |
+| No `review` on the bot's PR | the PR wasn't made with the App token | Check the PR author is `app/moby-content-fixer`. |
 | Setup: "no runner at ~/actions-runner" | runner not unpacked in the VM | Download `actions-runner-linux-arm64-<v>.tar.gz` into `~/actions-runner` in the VM and unpack it. |
 | Setup: "source has uncommitted changes" or "site files differ" | local edits in the seed, or running from a demo clone | Commit or stash in the seed; run setup from the seed's `presenter/`. |
 | Teardown: "lacks the delete_repo scope" | `gh` token scope | `gh auth refresh -s delete_repo` |

@@ -30,7 +30,7 @@ Every setting can come from an option or an environment variable; the option win
                         new repo, with the kvm label
   --runner-name NAME    runner name                              $DEMO_RUNNER_NAME (default: lima-runner)
   Phase B (all skipped unless the App ID is set):
-  --fixer-app-id ID     GitHub App ID (docker-content-fixer)     $FIXER_APP_ID
+  --fixer-app-id ID     GitHub App ID (moby-content-fixer)     $FIXER_APP_ID
   --fixer-key-file F    the App's private key (.pem)             $FIXER_APP_PRIVATE_KEY_FILE
   --fixer-installation-id ID  the App's installation on your     $FIXER_INSTALLATION_ID (from the URL of
                         account; the new repo is added to it     Settings > Applications > Configure)
@@ -229,7 +229,7 @@ if [ -n "$FIXER_APP_ID" ]; then
       printf '    [dry-run] gh api -X PUT user/installations/%s/repositories/<id of %s>\n' "$FIXER_INSTALLATION_ID" "$REPO"
     elif ! repo_id=$(gh api "repos/$REPO" -q .id) || [ -z "$repo_id" ] \
       || ! gh api -X PUT "user/installations/$FIXER_INSTALLATION_ID/repositories/$repo_id" >/dev/null; then
-      echo "warning: could not add $REPO to the App installation; add it by hand: Settings > Applications > docker-content-fixer > Configure > Repository access" >&2
+      echo "warning: could not add $REPO to the App installation; add it by hand: Settings > Applications > moby-content-fixer > Configure > Repository access" >&2
     fi
   fi
 fi
