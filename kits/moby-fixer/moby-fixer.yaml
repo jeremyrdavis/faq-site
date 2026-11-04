@@ -1,0 +1,30 @@
+# syntax=docker/sandbox-kit:3
+schemaVersion: "3"
+kind: workload
+displayName: Content fixer
+version: "1.0.2"
+dockerfile: moby-fixer.dockerfile
+capabilities:
+  - type: com.docker.sandbox/sbx@1
+  - type: com.docker.sandbox/network-policy@1
+    config:
+      # If the site ever grows a build step, add install: { allow: [registry.npmjs.org] } so
+      # dependencies can be fetched during install hooks only; runtime stays closed.
+      runtime:
+        allow: [api.anthropic.com, github.com, api.github.com]
+        deny:  [registry.npmjs.org, pypi.org, files.pythonhosted.org, cdn.jsdelivr.net, fonts.googleapis.com, fonts.gstatic.com]
+  - type: com.docker.sandbox/credential@1
+    config:
+      service: anthropic
+      phase: runtime
+      apiKey: { name: ANTHROPIC_API_KEY, proxyManaged: true,
+                inject: [{ domain: api.anthropic.com, header: x-api-key, format: "%s" }] }
+  - type: com.docker.sandbox/credential@1
+    config:
+      service: github
+      phase: runtime
+      apiKey: { name: GH_TOKEN, proxyManaged: true,
+                inject: [{ domain: api.github.com, header: Authorization, format: "token %s" },
+                         { domain: github.com,     header: Authorization, format: "token %s" }] }
+  - type: com.docker.sandbox/agent-context@1
+    config: { filename: CLAUDE.md, contentFile: ./context.md }

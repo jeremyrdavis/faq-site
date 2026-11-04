@@ -2,8 +2,8 @@
 # Create a disposable GitHub repo from the faq-site seed this script lives in and configure it for the
 # Phase A demo: clone, new remote, push main and the baseline tag, repo variables and
 # secrets, branch protection on main and, with --runner-vm, moving the self-hosted runner
-# to the new repo. Runs on the presenter's Mac. Phase B setup
-# (agent-fix label, GitHub App, FIXER_* values) is deliberately not here.
+# to the new repo, and, when the fixer App is given, Phase B: FIXER_* values, the agent-fix
+# label, and adding the repo to the App's installation. Runs on the presenter's Mac.
 set -euo pipefail
 
 usage() {
@@ -16,8 +16,9 @@ Every setting can come from an option or an environment variable; the option win
   --owner OWNER         GitHub user or org                       $DEMO_OWNER (default: the logged-in gh user)
   --source DIR          seed repo to clone                       $DEMO_SOURCE (default: the repo this script is in)
   --dest-root DIR       parent for the new clone                 $DEMO_DEST_ROOT (default: ~/Demos)
-  --public              create a public repo                     DEMO_VISIBILITY=public (default: private;
-                                                                 the self-hosted runner makes private safer)
+  --private             create a private repo                    DEMO_VISIBILITY=private (default: public, so
+                                                                 the audience can open it; repos are deleted
+                                                                 after each run)
   --namespace NS        KIT_NAMESPACE                            $KIT_NAMESPACE (default: jeremydavis86783)
   --kit-version V       KIT_VERSION                              $KIT_VERSION (default: 1.0.2)
   --reviewer-id ID      REVIEWER_DOCKER_ID                       $REVIEWER_DOCKER_ID (default: mobyreviewer)
@@ -28,10 +29,18 @@ Every setting can come from an option or an environment variable; the option win
                         Lima VM VM (~/actions-runner there) to the
                         new repo, with the kvm label
   --runner-name NAME    runner name                              $DEMO_RUNNER_NAME (default: lima-runner)
+  Phase B (all skipped unless the App ID is set):
+  --fixer-app-id ID     GitHub App ID (docker-content-fixer)     $FIXER_APP_ID
+  --fixer-key-file F    the App's private key (.pem)             $FIXER_APP_PRIVATE_KEY_FILE
+  --fixer-installation-id ID  the App's installation on your     $FIXER_INSTALLATION_ID (from the URL of
+                        account; the new repo is added to it     Settings > Applications > Configure)
+  --fixer-docker-id ID  FIXER_DOCKER_ID: the principal the fixer $FIXER_DOCKER_ID (default: the namespace,
+                        acts for (delegation)                    i.e. your own Docker account)
   --yes                 skip the confirmation prompt             DEMO_YES=1
   --dry-run             print what would happen; change nothing, prompt for nothing
 
-Secrets come from the environment (REVIEWER_DOCKER_PAT, ANTHROPIC_API_KEY) or are prompted
+Secrets come from the environment (REVIEWER_DOCKER_PAT, ANTHROPIC_API_KEY, and for Phase B
+FIXER_DOCKER_PAT) or are prompted
 for without echo, and are passed to gh on stdin, never on a command line.
 
 Example, fully non-interactive:
@@ -46,7 +55,7 @@ EOF
 OWNER="${DEMO_OWNER:-}"; NAME="${DEMO_REPO_NAME:-}"
 SOURCE="${DEMO_SOURCE:-$(git -C "$(dirname "$0")" rev-parse --show-toplevel 2>/dev/null || true)}"
 DEST_ROOT="${DEMO_DEST_ROOT:-$HOME/Demos}"
-VISIBILITY="${DEMO_VISIBILITY:-private}"
+VISIBILITY="${DEMO_VISIBILITY:-public}"
 NAMESPACE="${KIT_NAMESPACE:-jeremydavis86783}"
 KIT_VERSION="${KIT_VERSION:-1.0.2}"
 REVIEWER_ID="${REVIEWER_DOCKER_ID:-mobyreviewer}"
@@ -56,6 +65,10 @@ DRY=0
 YES="${DEMO_YES:-0}"
 RUNNER_VM="${DEMO_RUNNER_VM:-}"
 RUNNER_NAME="${DEMO_RUNNER_NAME:-lima-runner}"
+FIXER_APP_ID="${FIXER_APP_ID:-}"
+FIXER_KEY_FILE="${FIXER_APP_PRIVATE_KEY_FILE:-}"
+FIXER_INSTALLATION_ID="${FIXER_INSTALLATION_ID:-}"
+FIXER_ID="${FIXER_DOCKER_ID:-$NAMESPACE}"
 BASELINE_TAG=unstyled-baseline
 
 while [ $# -gt 0 ]; do
@@ -63,6 +76,7 @@ while [ $# -gt 0 ]; do
     --owner) OWNER=${2:?}; shift 2 ;;
     --source) SOURCE=${2:?}; shift 2 ;;
     --dest-root) DEST_ROOT=${2:?}; shift 2 ;;
+    --private) VISIBILITY=private; shift ;;
     --public) VISIBILITY=public; shift ;;
     --namespace) NAMESPACE=${2:?}; shift 2 ;;
     --kit-version) KIT_VERSION=${2:?}; shift 2 ;;
@@ -71,6 +85,10 @@ while [ $# -gt 0 ]; do
     --enforce-admins) ENFORCE_ADMINS=true; shift ;;
     --runner-vm) RUNNER_VM=${2:?}; shift 2 ;;
     --runner-name) RUNNER_NAME=${2:?}; shift 2 ;;
+    --fixer-app-id) FIXER_APP_ID=${2:?}; shift 2 ;;
+    --fixer-key-file) FIXER_KEY_FILE=${2:?}; shift 2 ;;
+    --fixer-installation-id) FIXER_INSTALLATION_ID=${2:?}; shift 2 ;;
+    --fixer-docker-id) FIXER_ID=${2:?}; shift 2 ;;
     --yes|-y) YES=1; shift ;;
     --dry-run) DRY=1; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -131,6 +149,15 @@ get_secret() { # name -> value on stdout; env first, then silent prompt
 }
 DOCKER_PAT=$(get_secret REVIEWER_DOCKER_PAT)
 ANTHROPIC_KEY=$(get_secret ANTHROPIC_API_KEY)
+if [ -n "$FIXER_APP_ID" ]; then
+  [ -n "$FIXER_KEY_FILE" ] || die "Phase B needs the App's private key: --fixer-key-file or FIXER_APP_PRIVATE_KEY_FILE"
+  [ -r "$FIXER_KEY_FILE" ] || die "cannot read $FIXER_KEY_FILE"
+  grep -q 'PRIVATE KEY' "$FIXER_KEY_FILE" || die "$FIXER_KEY_FILE does not look like a PEM private key"
+  FIXER_PAT=$(get_secret FIXER_DOCKER_PAT)
+  PHASE_B="App $FIXER_APP_ID, FIXER_DOCKER_ID=$FIXER_ID, label agent-fix, installation ${FIXER_INSTALLATION_ID:-not given (add the repo by hand)}"
+else
+  PHASE_B="skipped (no FIXER_APP_ID)"
+fi
 
 if [ -n "$RUNNER_VM" ]; then
   RUNNER_PLAN="move $RUNNER_NAME (VM $RUNNER_VM) here, labels self-hosted,Linux,ARM64,kvm"
@@ -147,6 +174,7 @@ Plan
   secrets     REVIEWER_DOCKER_PAT, ANTHROPIC_API_KEY
   protection  main: required check 'publish', $REVIEWS approving review(s), enforce_admins=$ENFORCE_ADMINS
   runner      $RUNNER_PLAN
+  phase B     $PHASE_B
 EOF
 if [ "$DRY" = 0 ] && [ "$YES" = 0 ]; then
   read -rp "Proceed? [y/N] " ok </dev/tty
@@ -179,6 +207,31 @@ if [ "$DRY" = 1 ]; then
 else
   printf '%s' "$DOCKER_PAT" | gh secret set REVIEWER_DOCKER_PAT --repo "$REPO"
   printf '%s' "$ANTHROPIC_KEY" | gh secret set ANTHROPIC_API_KEY --repo "$REPO"
+fi
+
+# ---- Phase B: the fixer --------------------------------------------------------
+if [ -n "$FIXER_APP_ID" ]; then
+  say "Phase B: fixer variables, secrets and label"
+  run gh variable set FIXER_APP_ID --repo "$REPO" --body "$FIXER_APP_ID"
+  run gh variable set FIXER_DOCKER_ID --repo "$REPO" --body "$FIXER_ID"
+  if [ "$DRY" = 1 ]; then
+    printf '    [dry-run] gh secret set FIXER_APP_PRIVATE_KEY --repo %s < %s\n' "$REPO" "$FIXER_KEY_FILE"
+    printf '    [dry-run] gh secret set FIXER_DOCKER_PAT --repo %s < <value>\n' "$REPO"
+  else
+    gh secret set FIXER_APP_PRIVATE_KEY --repo "$REPO" < "$FIXER_KEY_FILE"
+    printf '%s' "$FIXER_PAT" | gh secret set FIXER_DOCKER_PAT --repo "$REPO"
+  fi
+  run gh label create agent-fix --repo "$REPO" --color 1D63ED --force \
+    --description "A person approves the content fixer working on this issue"
+  # Keep the App's installation on selected repositories: add each demo repo as it is made.
+  if [ -n "$FIXER_INSTALLATION_ID" ]; then
+    if [ "$DRY" = 1 ]; then
+      printf '    [dry-run] gh api -X PUT user/installations/%s/repositories/<id of %s>\n' "$FIXER_INSTALLATION_ID" "$REPO"
+    elif ! repo_id=$(gh api "repos/$REPO" -q .id) || [ -z "$repo_id" ] \
+      || ! gh api -X PUT "user/installations/$FIXER_INSTALLATION_ID/repositories/$repo_id" >/dev/null; then
+      echo "warning: could not add $REPO to the App installation; add it by hand: Settings > Applications > docker-content-fixer > Configure > Repository access" >&2
+    fi
+  fi
 fi
 
 # ---- branch protection (after the push: the branch must exist) -------------
@@ -251,6 +304,7 @@ Done: https://github.com/$REPO
 
 Next:
   1. Runner: $RUNNER_NEXT
+     Phase B: $PHASE_B
   2. Launch the developer sandbox from the new clone:
        cd $DEST
        sbx secret set anthropic --sandbox dev -t "<API key>" --force

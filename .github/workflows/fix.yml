@@ -1,0 +1,109 @@
+name: fix
+# The only entry point is a person applying the agent-fix label. Issue text never starts this,
+# review.yml never triggers it, and it never reacts to reviews.
+on:
+  issues:
+    types: [labeled]
+concurrency:
+  group: fix-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  fix:
+    if: github.event.label.name == 'agent-fix'
+    runs-on: [self-hosted, linux, kvm]
+    permissions: { contents: read }   # the App token does the writing, and only inside the sandbox
+    timeout-minutes: 30               # a hung agent fails the job
+    env:
+      ISSUE: ${{ github.event.issue.number }}
+      ISSUE_AUTHOR: ${{ github.event.sender.login }}
+      SBX_NAME: fix-${{ github.run_id }}
+      KIT_NS: ${{ vars.KIT_NAMESPACE }}
+      KIT_VERSION: ${{ vars.KIT_VERSION }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/create-github-app-token@v1
+        id: app
+        with:
+          app-id: ${{ vars.FIXER_APP_ID }}
+          private-key: ${{ secrets.FIXER_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
+          permission-issues: write
+      - name: Bot identity for commits
+        id: bot
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          SLUG: ${{ steps.app.outputs.app-slug }}
+        run: |
+          id=$(gh api "users/${SLUG}%5Bbot%5D" -q .id)
+          echo "name=${SLUG}[bot]" >> "$GITHUB_OUTPUT"
+          echo "email=${id}+${SLUG}[bot]@users.noreply.github.com" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        # No token left in .git/config: the agent works in this checkout (direct mode), and its
+        # only GitHub credential must be the proxy-injected, sandbox-scoped App token.
+        with: { ref: main, fetch-depth: 0, persist-credentials: false }
+      - name: Sign in to Docker as the principal the fixer acts for (delegation)
+        env: { FIXER_DOCKER_PAT: "${{ secrets.FIXER_DOCKER_PAT }}" }
+        run: echo "$FIXER_DOCKER_PAT" | sbx login --username "${{ vars.FIXER_DOCKER_ID }}" --password-stdin
+      - name: Deny-by-default network policy
+        # Same as review.yml: init errors once the global policy exists, and the runner is persistent.
+        run: |
+          policy=$(sbx policy ls)
+          echo "$policy"
+          if grep -q 'Managed by' <<<"$policy"; then echo "org-governed: local init skipped"
+          elif grep -q 'default-deny-all' <<<"$policy"; then echo "already deny-all"
+          else sbx policy init deny-all; fi
+      - name: Agent credentials (App token and Anthropic key, sandbox-scoped)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          APP_TOKEN: ${{ steps.app.outputs.token }}
+        run: |
+          sbx secret set anthropic --sandbox "$SBX_NAME" -t "$ANTHROPIC_API_KEY" --force
+          sbx secret set github --sandbox "$SBX_NAME" -t "$APP_TOKEN" --force
+      - name: Stage the issue text as data
+        # Outside the checkout, so it can never be committed.
+        env: { GH_TOKEN: "${{ steps.app.outputs.token }}" }
+        run: |
+          gh issue view "$ISSUE" --json title,body -q '"# " + .title + "\n\n" + .body' > "$RUNNER_TEMP/issue.md"
+          cat "$RUNNER_TEMP/issue.md"
+      - name: Create fixer sandbox (direct mode; it must push)
+        run: |
+          sbx create --name "$SBX_NAME" --skills=off \
+            -e ISSUE="$ISSUE" -e ISSUE_AUTHOR="$ISSUE_AUTHOR" \
+            -e GIT_AUTHOR_NAME="${{ steps.bot.outputs.name }}" -e GIT_COMMITTER_NAME="${{ steps.bot.outputs.name }}" \
+            -e GIT_AUTHOR_EMAIL="${{ steps.bot.outputs.email }}" -e GIT_COMMITTER_EMAIL="${{ steps.bot.outputs.email }}" \
+            "docker.io/$KIT_NS/moby-fixer:$KIT_VERSION" --kit "docker.io/$KIT_NS/docker-style-guide:$KIT_VERSION" .
+          sbx exec "$SBX_NAME" mkdir -p /tmp/work
+          sbx cp "$RUNNER_TEMP/issue.md" "$SBX_NAME:/tmp/work/issue.md"
+      - name: Prove the blast radius before the agent runs
+        run: |
+          sbx policy ls "$SBX_NAME" --wide
+          sbx policy check network --sandbox "$SBX_NAME" api.anthropic.com
+          sbx policy check network --sandbox "$SBX_NAME" github.com
+          for host in fonts.googleapis.com registry.npmjs.org; do
+            if sbx policy check network --sandbox "$SBX_NAME" "$host"; then
+              echo "::error::$host is reachable from the fixer sandbox"; exit 1
+            fi
+          done
+      - name: Run the fixer
+        run: |
+          mkdir -p "$RUNNER_TEMP/out"
+          PROMPT=$(sed "s/{{ISSUE}}/$ISSUE/g" kits/moby-fixer/fix-prompt.md)
+          sbx exec "$SBX_NAME" claude --dangerously-skip-permissions -p "$PROMPT" | tee "$RUNNER_TEMP/out/fixer.log"
+      - name: Verify a PR exists for this issue
+        env: { GH_TOKEN: "${{ steps.app.outputs.token }}" }
+        run: |
+          gh pr list --state open --search "Fixes #$ISSUE in:body" --json number,url,author -q '.[0]' | tee "$RUNNER_TEMP/out/pr.json"
+          test -s "$RUNNER_TEMP/out/pr.json"
+      - name: Collect the policy log
+        if: always()
+        run: sbx policy log "$SBX_NAME" --json > "$RUNNER_TEMP/out/policy-log.json" || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: "fix-${{ github.run_id }}", path: "${{ runner.temp }}/out/", if-no-files-found: warn }
+      - if: always()
+        run: |
+          sbx rm --force "$SBX_NAME" || true
+          sbx secret rm github --sandbox "$SBX_NAME" || true
+          sbx secret rm anthropic --sandbox "$SBX_NAME" || true
