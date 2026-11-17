@@ -1,0 +1,123 @@
+/* FAQ site styles — Docker style guide v1.0.0. All values come from tokens.css. */
+
+:root {
+  color-scheme: light dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg-body);
+  font-family: var(--font-sans);
+  font-size: var(--fs-base);
+  line-height: 1.6;
+  overflow-wrap: break-word;
+}
+
+/* One centered column, no wider than --measure (rule 4). */
+header,
+main,
+footer {
+  max-width: var(--measure);
+  margin-inline: auto;
+  padding-inline: var(--space-4);
+}
+
+header {
+  padding-block: var(--space-8) var(--space-6);
+}
+
+main {
+  padding-block: 0 var(--space-7);
+}
+
+footer {
+  padding-block: var(--space-5) var(--space-7);
+  border-top: 1px solid var(--rule);
+  color: var(--fg-muted);
+  font-size: var(--fs-sm);
+}
+
+h1,
+h2 {
+  margin: 0 0 var(--space-3);
+  color: var(--fg);
+  line-height: 1.2;
+}
+
+h1 {
+  font-size: var(--fs-2xl);
+}
+
+h2 {
+  margin-block-end: var(--space-5);
+  font-size: var(--fs-lg);
+}
+
+header p {
+  margin: 0;
+  color: var(--fg-muted);
+  font-size: var(--fs-md);
+}
+
+p {
+  margin: 0;
+}
+
+/* FAQ entries */
+details {
+  border-bottom: 1px solid var(--rule);
+}
+
+details:first-of-type {
+  border-top: 1px solid var(--rule);
+}
+
+summary {
+  padding-block: var(--space-4);
+  color: var(--fg);
+  font-size: var(--fs-md);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+summary:hover {
+  color: var(--accent-strong);
+}
+
+details p {
+  padding-block: 0 var(--space-4);
+}
+
+/* Links */
+a {
+  color: var(--accent);
+  text-underline-offset: 0.15em;
+}
+
+a:hover {
+  color: var(--accent-strong);
+}
+
+/* Visible focus for every interactive element (rule 5). */
+a:focus-visible,
+summary:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+@media (min-width: 768px) {
+  header,
+  main,
+  footer {
+    padding-inline: var(--space-6);
+  }
+}
